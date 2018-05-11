@@ -27,12 +27,13 @@ Recommends: fuse
 Built-Using: ${misc:Built-Using}
 Depends: ${misc:Depends},
          ${shlibs:Depends}
-Description:
- Cloud SQL Proxy The Cloud SQL Proxy allows a user with the appropriate
- permissions to connect to a Second Generation Cloud SQL database without
- having to deal with IP whitelisting or SSL certificates manually. It works
- by opening unix/tcp sockets on the local machine and proxying connections
- to the associated Cloud SQL instances when the sockets are used.
+Description: connect securely to a 2nd generation Cloud SQL DB
+ The Cloud SQL Proxy allows a user with the appropriate permissions to
+ connect to a Second Generation Google Cloud SQL database without having
+ to deal with IP whitelisting or SSL certificates manually. It works by
+ opening unix/tcp sockets on the local machine and proxying
+ connections to the associated Cloud SQL instances when the sockets
+ are used.
  .
  Optional functionality can be enabled (--fuse) with access to `/dev/fuse`
  as well as the `fusermount` binary.
@@ -42,5 +43,5 @@ Description:
  least the sqlservice.admin API scope
  ("https://www.googleapis.com/auth/sqlservice.admin")
  and the associated project must have the SQL Admin API enabled.  The default
- service account must also have at least WRITER/EDITOR priviledges to any
+ service account must also have at least WRITER/EDITOR privileges to any
  projects of target SQL instances.
