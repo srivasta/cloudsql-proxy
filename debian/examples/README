@@ -1,0 +1,69 @@
+
+                Using cloudsql-proxy in other packages
+                ----- -------------- -- ----- --------
+
+ By default, cloudsql-proxy does not start a daemon process, since
+ there are many configuration options that would depend on the
+ processes running on a machine. Indeed, it is not certain how many
+ proxies are needed on a particular machine, and how to map them to
+ local ports. It is left to dependent packages to set up the daemon
+ process.
+
+ You can use one local proxy client to connect to multiple Cloud SQL
+ instances. The way you do this depends on whether you are using Unix
+ sockets or TCP.
+
+ Unix sockets
+ ---- -------
+
+ To connect the proxy to multiple instances, you provide the instance
+ connection names with the -instances parameter, in a comma-separated
+ list (no spaces). The proxy connects to each instance when it
+ starts. This is recommended if the credentials to present to each
+ backend database is the same for all connections.
+
+ You connect to each instance using its socket, in the specified
+ directory.
+
+ For example:
+
+         ./cloud_sql_proxy -dir=/cloudsql \
+          -instances=myProject:us-central1:myInstance,myProject:us-central1:myInstance2 &
+         mysql -u myUser -S /cloudsql/myProject:us-central1:myInstance2
+
+ TCP
+ ---
+
+ When you connect using TCP, you specify the port on your machine to
+ use to connect to the instance, and every instance must have its own
+ port. The mysql tool uses 3306 by default, but you can specify
+ another port for it to use.
+
+ For example:
+
+         ./cloud_sql_proxy \
+              -instances=myProject:us-central1:myInstance=tcp:3306,myProject:us-central1:myInstance2=tcp:3307 &
+         mysql -u myUser --host 127.0.0.1  --port 3307
+
+
+ Automating startup as a Daemon
+ ---------- ------- -- - ------
+
+ For a one off process an admin may start cloudsql-proxy, with the
+ appropriate flags, on the command line. However, to automatically
+ start the cloudsql-proxy(ies) at system start, or to package software
+ that requires one or more proxies, it is desireable to create systemd
+ unit files, and the corresponding /etc/init.d scripts.
+
+ This examples directory contains an example of how to set up a single
+ separate proxy. You may adjust the script to start a single proxy.
+
+ Naming Convention
+ ------ ----------
+
+ If installations follow a common naming convention, it would make it
+ easier to discover5 cloudsql-proxy daemon invocations on the machine.
+
+ 1) Name the init.d file cloudsql-proxy-<foo>, where <foo> represents
+    your package, project, or intent
+ 2) Similarily, name the systemd unit cloudsql-proxy-<foo>.service
