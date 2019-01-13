@@ -1,0 +1,43 @@
+#!/usr/bin/make -f
+# Uncomment this to turn on verbose mode.
+# export DH_VERBOSE=1
+
+package:=cloudsql-proxy
+SRCTOP:= $(shell if [ "$$PWD" != "" ]; then echo $$PWD; else pwd; fi)
+INSTALL = install
+ifeq (,$(filter nostrip,$(DEB_BUILD_OPTIONS)))
+    INSTALL_PROGRAM += -s
+endif
+install_file    = $(INSTALL) -p    -o root -g root  -m  644
+install_program = $(INSTALL) -p    -o root -g root  -m  755
+install_script  = $(INSTALL) -p    -o root -g root  -m  755
+make_directory  = $(INSTALL) -p -d -o root -g root  -m  755
+PREFIX=/usr
+
+export DH_VERBOSE = 1
+
+# Some tests require one to be on a GCE instance, and others
+# expect to use fuse. These should be safe to run.
+override_dh_auto_test:
+	$(GO) test TestCreateInstanceConfigs
+	$(GO) test TestParseInstanceConfig
+	$(GO) test TestClientCache
+	$(GO) test TestConcurrentRefresh
+	$(GO) test TestMaximumConnectionsCount
+	$(GO) test TestConnSetAdd
+	$(GO) test TestConnSetRemove
+	$(GO) test TestConns
+	$(GO) test TestSplitName
+
+override_dh_dwz:
+
+override_dh_auto_install:
+	dh_auto_install -- --no-source
+
+%:
+	dh $@ --buildsystem=golang --with=golang
+
+
+#Local variables:
+#mode: makefile
+#End:

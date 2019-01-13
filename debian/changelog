@@ -1,0 +1,25 @@
+cloudsql-proxy (1.13-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Manoj Srivastava <srivasta@debian.org>  Sun, 13 Jan 2019 14:05:09 -0800
+
+cloudsql-proxy (1.12-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Updated dependency on the newer version of
+    golang-github-go-sql-driver-mysql-dev
+  * Added functionality:
+    + Allow an upper limit on the number of open file descriptors for the
+      proxy.
+    + Allow the specification of the API to connect to
+    + If flags don't specify an auth source, try either gcloud or
+      application default
+
+ -- Manoj Srivastava <srivasta@debian.org>  Thu, 27 Sep 2018 12:48:11 -0700
+
+cloudsql-proxy (1.11+git20180420.74e2f41-1) unstable; urgency=low
+
+  * Initial release. Closes: Bug#898229
+
+ -- Manoj Srivastava <srivasta@debian.org>  Wed, 09 May 2018 10:05:52 -0700
