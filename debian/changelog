@@ -1,3 +1,9 @@
+cloudsql-proxy (1.13-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Manoj Srivastava <srivasta@debian.org>  Sun, 13 Jan 2019 14:05:09 -0800
+
 cloudsql-proxy (1.12-1) unstable; urgency=medium
 
   * New upstream release.

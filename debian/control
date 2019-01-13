@@ -11,6 +11,7 @@ Build-Depends: debhelper (>= 11),
                golang-golang-x-crypto-dev,
                golang-golang-x-net-dev,
                golang-golang-x-oauth2-google-dev,
+               golang-golang-x-sys-dev,
                golang-google-api-dev,
                golang-google-cloud-dev,
                golang-pq-dev
