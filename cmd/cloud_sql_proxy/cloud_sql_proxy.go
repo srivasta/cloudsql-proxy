@@ -27,9 +27,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/GoogleCloudPlatform/cloudsql-proxy/logging"
@@ -47,9 +49,10 @@ import (
 )
 
 var (
-	version = flag.Bool("version", false, "Print the version of the proxy and exit")
-	verbose = flag.Bool("verbose", true, "If false, verbose output such as information about when connections are created/closed without error are suppressed")
-	quiet   = flag.Bool("quiet", false, "Disable log messages")
+	version        = flag.Bool("version", false, "Print the version of the proxy and exit")
+	verbose        = flag.Bool("verbose", true, "If false, verbose output such as information about when connections are created/closed without error are suppressed")
+	quiet          = flag.Bool("quiet", false, "Disable log messages")
+	logDebugStdout = flag.Bool("log_debug_stdout", false, "If true, log messages that are not errors will output to stdout instead of stderr")
 
 	refreshCfgThrottle = flag.Duration("refresh_config_throttle", proxy.DefaultRefreshCfgThrottle, "If set, this flag specifies the amount of forced sleep between successive API calls in order to protect client API quota. Minimum allowed value is "+minimumRefreshCfgThrottle.String())
 	checkRegion        = flag.Bool("check_region", false, `If specified, the 'region' portion of the connection string is required for
@@ -76,12 +79,13 @@ can be removed automatically by this program.`)
 	// Settings for limits
 	maxConnections = flag.Uint64("max_connections", 0, `If provided, the maximum number of connections to establish before refusing new connections. Defaults to 0 (no limit)`)
 	fdRlimit       = flag.Uint64("fd_rlimit", limits.ExpectedFDs, `Sets the rlimit on the number of open file descriptors for the proxy to the provided value. If set to zero, disables attempts to set the rlimit. Defaults to a value which can support 4K connections to one instance`)
+	termTimeout    = flag.Duration("term_timeout", 0, "When set, the proxy will wait for existing connections to close before terminating. Any connections that haven't closed after the timeout will be dropped")
 
 	// Settings for authentication.
 	token     = flag.String("token", "", "When set, the proxy uses this Bearer token for authorization.")
 	tokenFile = flag.String("credential_file", "", `If provided, this json file will be used to retrieve Service Account credentials.
 You may set the GOOGLE_APPLICATION_CREDENTIALS environment variable for the same effect.`)
-	ipAddressTypes = flag.String("ip_address_types", "PRIMARY,PRIVATE", "Default to be 'PRIMARY'. Options: a list of strings separated by ',', e.g. 'PRIMARY, PRIVATE' ")
+	ipAddressTypes = flag.String("ip_address_types", "PUBLIC,PRIVATE", "Default to be 'PUBLIC,PRIVATE'. Options: a list of strings separated by ',', e.g. 'PUBLIC,PRIVATE' ")
 
 	// Setting to choose what API to connect to
 	host = flag.String("host", "https://www.googleapis.com/sql/v1beta4/", "When set, the proxy uses this host as the base API path.")
@@ -122,6 +126,9 @@ General:
     WARNING: this option disables ALL logging output (including connection
     errors), which will likely make debugging difficult. The -quiet flag takes
     precedence over the -verbose flag.
+  -log_debug_stdout
+    When explicitly set to true, verbose and info log messages will be directed
+	to stdout as a pose to the default stderr.
   -verbose
     When explicitly set to false, disable log messages that are not errors nor
     first-time startup messages (e.g. when new connections are established).
@@ -261,12 +268,18 @@ func authenticatedClient(ctx context.Context) (*http.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid json file %q: %v", f, err)
 		}
-		cfg, err := goauth.JWTConfigFromJSON(all, proxy.SQLScope)
+		// First try and load this as a service account config, which allows us to see the service account email:
+		if cfg, err := goauth.JWTConfigFromJSON(all, proxy.SQLScope); err == nil {
+			logging.Infof("using credential file for authentication; email=%s", cfg.Email)
+			return cfg.Client(ctx), nil
+		}
+
+		cred, err := goauth.CredentialsFromJSON(ctx, all, proxy.SQLScope)
 		if err != nil {
 			return nil, fmt.Errorf("invalid json file %q: %v", f, err)
 		}
-		logging.Infof("using credential file for authentication; email=%s", cfg.Email)
-		return cfg.Client(ctx), nil
+		logging.Infof("using credential file for authentication; path=%q", f)
+		return oauth2.NewClient(ctx, cred.TokenSource), nil
 	} else if tok := *token; tok != "" {
 		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: tok})
 		return oauth2.NewClient(ctx, src), nil
@@ -375,8 +388,12 @@ func main() {
 		return
 	}
 
+	if *logDebugStdout {
+		logging.LogDebugToStdout()
+	}
+
 	if !*verbose {
-		logging.Verbosef = func(string, ...interface{}) {}
+		logging.LogVerboseToNowhere()
 	}
 
 	if *quiet {
@@ -482,7 +499,7 @@ func main() {
 	}
 	logging.Infof("Ready for new connections")
 
-	(&proxy.Client{
+	proxyClient := &proxy.Client{
 		Port:           port,
 		MaxConnections: *maxConnections,
 		Certs: certs.NewCertSourceOpts(client, certs.RemoteOpts{
@@ -493,5 +510,22 @@ func main() {
 		}),
 		Conns:              connset,
 		RefreshCfgThrottle: refreshCfgThrottle,
-	}).Run(connSrc)
+	}
+
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		<-signals
+		logging.Infof("Received TERM signal. Waiting up to %s before terminating.", *termTimeout)
+
+		err := proxyClient.Shutdown(*termTimeout)
+
+		if err == nil {
+			os.Exit(0)
+		}
+		os.Exit(2)
+	}()
+
+	proxyClient.Run(connSrc)
 }
