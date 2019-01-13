@@ -1,0 +1,244 @@
+.\" Hey, Emacs! This is an -*- nroff -*- source file.
+.\" Copyright (C), 2018  Google Cloud Platform
+.\" You may distribute this file under the terms of the GNU Free
+.\" Documentation License.
+.TH cloud_sql_proxy 1 2018-05-10 "Debian" "Debian GNU/Linux manual"
+.SH NAME
+cloud_sql_proxy \- connect securely to a 2nd generation cloud sql database
+.SH SYNOPSIS
+.B cloud_sql_proxy
+
+.SH DESCRIPTION
+The Cloud SQL Proxy allows simple, secure connectivity to Google Cloud
+SQL. It is a long-running process that opens local sockets (either TCP
+or Unix sockets) according to the parameters passed to it. A local
+application connects to a Cloud SQL instance by using the
+corresponding socket.
+.SS Authorization
+By default, the proxy will authenticate under the default service account
+of the Compute Engine VM it is running on. Therefore, the VM must have at
+least the sqlservice.admin
+.UR  https://www.googleapis.com/auth/sqlservice.admin
+API scope
+.UE
+and the associated project must have the SQL Admin API enabled.  The default
+service account must also have at least
+.B WRITER/EDITOR
+privileges to any projects of target SQL instances.
+.IP \(bu 4
+On Google Compute Engine, the default service account is used.
+The Cloud SQL API must be enabled for the VM.
+.IP \(bu 4
+When the gcloud command-line tool is installed on the local machine,
+the
+.I "active account"
+is used for authentication. Run
+.I 'gcloud auth list'
+to see which accounts are installed on your local machine and
+.I 'gcloud config list account'
+to view the active account.
+.IP \(bu 4
+To configure the proxy using a service account, pass the
+.B -credential_file
+parameter or set the
+.B GOOGLE_APPLICATION_CREDENTIALS
+environment variable.  This will override gcloud or GCE (Google
+Compute Engine) credentials, if they exist.
+.SH OPTIONS
+.SS General
+.TP
+.B \-quiet
+Disable log messages (e.g. when new connections are established).
+.B WARNING:
+this option disables ALL logging output (including connection errors),
+which will likely make debugging difficult. The
+.I -quiet
+flag takes precedence over the
+.I -verbose
+flag.
+.TP
+.B \-verbose
+When explicitly set to false, disable log messages that are not errors nor
+first-time startup messages (e.g. when new connections are established
+ or closed without errors).
+.TP
+.B \-version
+Print the version of the proxy and exit
+.SS Connection
+.TP
+.B \-credential_file
+If provided, this json file will be used to retrieve Service Account credentials.
+You may set the
+.B GOOGLE_APPLICATION_CREDENTIALS
+environment variable for the same effect.
+.TP
+.B \-token
+When set, the proxy uses this Bearer token for authorization
+.TP
+.B \-max_connections
+If provided, the maximum number of connections to establish before
+refusing new connections. Defaults to 0 (no limit)
+.TP
+.B \-instances
+To connect to a specific list of instances, set the instances parameter
+to a comma-separated list of ully qualified instance connection strings
+.B (project:region:name).
+For example:
+.RS
+.RS
+\-instances=my-project:my-region:my-instance
+.RE 3
+.RS
+.RS
+.IP
+For connectivity over TCP, you must specify a tcp port as part of the
+instance string. For example, the following example opens a loopback TCP
+socket on port 3306, which will be proxied to connect to the instance
+.I 'my-instance'
+in project
+.I 'my-project':
+.RS
+.RS
+\-instances=my-project:my-region:my-instance=tcp:3306
+.RE 2
+.PP
+When connecting over TCP, the -instances parameter is required.
+.PP
+Supplying INSTANCES environment variable achieves the same effect.  One can
+use that to keep k8s manifest files constant across multiple
+environments. If the name has the suffix
+.B '=tcp:port',
+a TCP server is opened on the specified port to proxy to that
+instance. Otherwise, one socket file per instance is opened
+in
+.I dir.
+You may use
+.B INSTANCES
+environment variable for the same effect. Using both will use value
+from flag. Not compatible with
+.I -fuse
+.RE
+.TP
+.B \-instances_metadata
+When running on GCE (Google Compute Engine) you can avoid the need to
+specify the list of instances on the command line by using the
+Metadata server. This parameter specifies a path to a metadata value
+which is then polled for a comma-separated list of fully qualified
+instances
+.B (project:region:name)
+to connect to in the exactly the same way as the
+.I -instances
+parameter. Updates to the metadata value will be observed and acted on
+by the Proxy. For example, to use the instance metadata value named
+.I cloud-sql-instances
+you would provide
+.I instance/attributes/cloud-sql-instances.
+.TP
+.B \-check_region
+If specified, the
+.I region
+portion of the connection string is required for Unix socket-based
+connections.
+.TP
+.B \-projects
+To direct the proxy to open connections for each Cloud SQL Instance in
+the comma-separated list of projects specified, set the projects
+parameter:
+.RS
+.RS
+\-projects=my-project
+.RE
+.RE
+.TP
+.B \-refresh_config_throttle
+If set, this flag specifies the amount of forced sleep between
+successive API calls in order to protect client API quota. Minimum
+allowed value is 1s
+.TP
+.B \-dir
+When using Unix sockets (the default for systems which support them),
+the Proxy places the sockets representing database instances in the
+directory specified by the
+.I -dir
+parameter.
+.TP
+.B \-fuse
+If your local environment has FUSE installed, you can specify the
+.I -fuse
+flag to avoid the requirement to specify instances in advance. Mount a
+directory at
+.I dir
+using FUSE for accessing instances. Note that the
+directory at
+.I dir
+must be empty before this program is started.  With
+.B FUSE,
+any attempts to open a Unix socket in the directory specified by
+.I -dir
+automatically creates that socket and connects to the corresponding
+instance.
+.TP
+.B \-fuse_tmp
+Used as a temporary directory if
+.I -fuse
+is set. Note that files in this directory can be removed automatically
+by this program.
+.SS Automatic instance discovery
+If the Google Cloud SQL is installed on the local machine and no instance
+connection flags are specified, the proxy connects to all instances in the
+gcloud tool's active project. Run
+.I 'gcloud config list project'
+to display the active project.
+.SH FILES
+.TP
+.B Credentials
+By default user account credentials are acquired by
+.I gcloud auth login
+and stored locally on the system.
+.I gcloud auth activate-service-account
+authorizes access using a service account. As with
+.I gcloud init
+and
+.I gcloud auth login,
+this command saves the service account credentials to the local system
+on successful completion and sets the specified account as the active
+account in your Cloud SDK configuration.  To configure the proxy using
+a service account, pass the
+.I -credential_file
+parameter or set the
+.B GOOGLE_APPLICATION_CREDENTIALS
+environment variable.  This will override gcloud or GCE (Google
+Compute Engine) credentials, if they exist.
+.TP
+.B sockets directory
+When using Unix sockets (the default for systems which support them),
+the Proxy places the sockets rep‐ resenting database instances in the
+directory specified by the
+.I -dir
+parameter. With
+.B FUSE
+one can also interact with the proxy using thius directory to specify
+instances of cloud SQL databases to connect to on the fly.
+.TP
+.B /dev/fuse
+Optional functionality can be enabled (
+.I --fuse
+) with access to
+.B /dev/fuse
+as well as the
+.B fusermount
+binary.
+.SH "SEE ALSO"
+.BR fusermount (1),
+.BR mount(8),
+.BR mount.fuse(8),
+.BR ulockmgr_server(1),
+.BR mysql(1),
+.BR postgres(1).
+.SH BUGS
+The upstream issue reporting system is at
+.UR https://github.com/GoogleCloudPlatform/cloudsql-proxy/issues
+github
+.UE
+.SH AUTHOR
+Manoj Srivastava <srivasta@google.com>

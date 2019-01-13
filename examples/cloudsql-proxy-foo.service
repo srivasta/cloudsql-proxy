@@ -1,0 +1,21 @@
+#
+# This file lives in /etc/systemd/system/cloudsql-proxy-foo.service
+# and depends on /etc/init.d/cloudsql-proxy-foo to manage the proxy.
+# This unit file ensures that the cloudsql-proxy will come up after
+# networkmanager is functional.  Note that each distinct proxy
+# credential requires its own unit file (you can have multiple
+# connections that share credentials in the same invocation)
+#
+
+[Unit]
+Description=cloudsql-proxy-foo
+After=NetworkManager-wait-online.service
+Requires=NetworkManager-wait-online.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/etc/init.d/cloudsql-proxy-foo start
+
+[Install]
+WantedBy=multi-user.target
