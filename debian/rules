@@ -29,6 +29,7 @@ override_dh_auto_test:
 	$(GO) test TestConns
 	$(GO) test TestSplitName
 
+override_dh_dwz:
 
 override_dh_auto_install:
 	dh_auto_install -- --no-source
