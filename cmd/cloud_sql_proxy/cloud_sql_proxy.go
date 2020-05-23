@@ -87,8 +87,11 @@ can be removed automatically by this program.`)
 You may set the GOOGLE_APPLICATION_CREDENTIALS environment variable for the same effect.`)
 	ipAddressTypes = flag.String("ip_address_types", "PUBLIC,PRIVATE", "Default to be 'PUBLIC,PRIVATE'. Options: a list of strings separated by ',', e.g. 'PUBLIC,PRIVATE' ")
 
+	skipInvalidInstanceConfigs = flag.Bool("skip_failed_instance_config", false, `Setting this flag will allow you to prevent the proxy from terminating when
+	some instance configurations could not be parsed and/or are unavailable.`)
+
 	// Setting to choose what API to connect to
-	host = flag.String("host", "https://www.googleapis.com/sql/v1beta4/", "When set, the proxy uses this host as the base API path.")
+	host = flag.String("host", "", "When set, the proxy uses this host as the base API path. Example: https://sqladmin.googleapis.com")
 )
 
 const (
@@ -128,7 +131,7 @@ General:
     precedence over the -verbose flag.
   -log_debug_stdout
     When explicitly set to true, verbose and info log messages will be directed
-	to stdout as a pose to the default stderr.
+	to stdout as opposed to the default stderr.
   -verbose
     When explicitly set to false, disable log messages that are not errors nor
     first-time startup messages (e.g. when new connections are established).
@@ -148,6 +151,18 @@ Connection:
             -instances=my-project:my-region:my-instance=tcp:3306
 
      When connecting over TCP, the -instances parameter is required.
+
+    To set a custom socket name, you can specify it as part of the instance
+	string.  The following example opens a unix socket in the directory
+	specified by -dir, which will be proxied to connect to the instance
+    'my-instance' in project 'my-project':
+
+            -instances=my-project:my-region:my-instance=unix:custom-socket-name
+
+	To override the -dir parameter, specify an absolute path as shown in the
+	following example:
+
+            -instances=my-project:my-region:my-instance=unix:/my/custom/sql-socket
 
      Supplying INSTANCES environment variable achieves the same effect.  One can
      use that to keep k8s manifest files constant across multiple environments
@@ -195,15 +210,6 @@ Information for all flags:
 
 var defaultTmp = filepath.Join(os.TempDir(), "cloudsql-proxy-tmp")
 
-// See https://github.com/GoogleCloudPlatform/gcloud-golang/issues/194
-func onGCE() bool {
-	res, err := http.Get("http://metadata.google.internal")
-	if err != nil {
-		return false
-	}
-	return res.Header.Get("Metadata-Flavor") == "Google"
-}
-
 const defaultVersionString = "NO_VERSION_SET"
 
 var versionString = defaultVersionString
@@ -241,6 +247,12 @@ func checkFlags(onGCE bool) error {
 		return nil
 	}
 
+	// Check if gcloud credentials are available and if so, skip checking the GCE VM service account scope.
+	_, err := util.GcloudConfig()
+	if err == nil {
+		return nil
+	}
+
 	scopes, err := metadata.Scopes("default")
 	if err != nil {
 		if _, ok := err.(metadata.NotDefinedError); ok {
@@ -262,30 +274,36 @@ func checkFlags(onGCE bool) error {
 	return nil
 }
 
-func authenticatedClient(ctx context.Context) (*http.Client, error) {
-	if f := *tokenFile; f != "" {
-		all, err := ioutil.ReadFile(f)
-		if err != nil {
-			return nil, fmt.Errorf("invalid json file %q: %v", f, err)
-		}
-		// First try and load this as a service account config, which allows us to see the service account email:
-		if cfg, err := goauth.JWTConfigFromJSON(all, proxy.SQLScope); err == nil {
-			logging.Infof("using credential file for authentication; email=%s", cfg.Email)
-			return cfg.Client(ctx), nil
-		}
+func authenticatedClientFromPath(ctx context.Context, f string) (*http.Client, error) {
+	all, err := ioutil.ReadFile(f)
+	if err != nil {
+		return nil, fmt.Errorf("invalid json file %q: %v", f, err)
+	}
+	// First try and load this as a service account config, which allows us to see the service account email:
+	if cfg, err := goauth.JWTConfigFromJSON(all, proxy.SQLScope); err == nil {
+		logging.Infof("using credential file for authentication; email=%s", cfg.Email)
+		return cfg.Client(ctx), nil
+	}
 
-		cred, err := goauth.CredentialsFromJSON(ctx, all, proxy.SQLScope)
-		if err != nil {
-			return nil, fmt.Errorf("invalid json file %q: %v", f, err)
-		}
-		logging.Infof("using credential file for authentication; path=%q", f)
-		return oauth2.NewClient(ctx, cred.TokenSource), nil
+	cred, err := goauth.CredentialsFromJSON(ctx, all, proxy.SQLScope)
+	if err != nil {
+		return nil, fmt.Errorf("invalid json file %q: %v", f, err)
+	}
+	logging.Infof("using credential file for authentication; path=%q", f)
+	return oauth2.NewClient(ctx, cred.TokenSource), nil
+}
+
+func authenticatedClient(ctx context.Context) (*http.Client, error) {
+	if *tokenFile != "" {
+		return authenticatedClientFromPath(ctx, *tokenFile)
 	} else if tok := *token; tok != "" {
 		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: tok})
 		return oauth2.NewClient(ctx, src), nil
+	} else if f := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"); f != "" {
+		return authenticatedClientFromPath(ctx, f)
 	}
 
-	// If flags don't specify an auth source, try either gcloud or application default
+	// If flags or env don't specify an auth source, try either gcloud or application default
 	// credentials.
 	src, err := util.GcloudTokenSource(ctx)
 	if err != nil {
@@ -315,6 +333,9 @@ func listInstances(ctx context.Context, cl *http.Client, projects []string) ([]s
 	sql, err := sqladmin.New(cl)
 	if err != nil {
 		return nil, err
+	}
+	if *host != "" {
+		sql.BasePath = *host
 	}
 
 	ch := make(chan string)
@@ -411,6 +432,12 @@ func main() {
 		}
 	}
 
+	if *host != "" && !strings.HasSuffix(*host, "/") {
+		logging.Errorf("Flag host should always end with /")
+		flag.PrintDefaults()
+		return
+	}
+
 	// TODO: needs a better place for consolidation
 	// if instances is blank and env var INSTANCES is supplied use it
 	if envInstances := os.Getenv("INSTANCES"); *instances == "" && envInstances != "" {
@@ -432,7 +459,7 @@ func main() {
 		}
 	}
 
-	onGCE := onGCE()
+	onGCE := metadata.OnGCE()
 	if err := checkFlags(onGCE); err != nil {
 		log.Fatal(err)
 	}
@@ -448,7 +475,7 @@ func main() {
 		log.Fatal(err)
 	}
 	instList = append(instList, ins...)
-	cfgs, err := CreateInstanceConfigs(*dir, *useFuse, instList, *instanceSrc, client)
+	cfgs, err := CreateInstanceConfigs(*dir, *useFuse, instList, *instanceSrc, client, *skipInvalidInstanceConfigs)
 	if err != nil {
 		log.Fatal(err)
 	}

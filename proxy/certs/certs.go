@@ -93,15 +93,15 @@ func NewCertSourceOpts(c *http.Client, opts RemoteOpts) *RemoteCertSource {
 	}
 	serv.UserAgent = ua
 
-	// Set default value to be PRIMARY if input opts.IPAddrTypeOpts is empty
-	if len(opts.IPAddrTypeOpts) < 1 {
-		opts.IPAddrTypeOpts = append(opts.IPAddrTypeOpts, "PRIMARY")
-	} else {
-		// Add "PUBLIC" as an alias for "PRIMARY"
-		for index, ipAddressType := range opts.IPAddrTypeOpts {
-			if strings.ToUpper(ipAddressType) == "PUBLIC" {
-				opts.IPAddrTypeOpts[index] = "PRIMARY"
-			}
+	// Set default value to be "PUBLIC,PRIVATE" if not specified
+	if len(opts.IPAddrTypeOpts) == 0 {
+		opts.IPAddrTypeOpts = []string{"PUBLIC", "PRIVATE"}
+	}
+
+	// Add "PUBLIC" as an alias for "PRIMARY"
+	for index, ipAddressType := range opts.IPAddrTypeOpts {
+		if strings.ToUpper(ipAddressType) == "PUBLIC" {
+			opts.IPAddrTypeOpts[index] = "PRIMARY"
 		}
 	}
 
@@ -258,6 +258,10 @@ func (s *RemoteCertSource) Remote(instance string) (cert *x509.Certificate, addr
 
 	if len(data.IpAddresses) == 0 {
 		return nil, "", "", fmt.Errorf("no IP address found for %v", instance)
+	}
+	if data.BackendType == "FIRST_GEN" {
+		logging.Errorf("WARNING: proxy client does not support first generation Cloud SQL instances.")
+		return nil, "", "", fmt.Errorf("%q is a first generation instance", instance)
 	}
 
 	// Find the first matching IP address by user input IP address types

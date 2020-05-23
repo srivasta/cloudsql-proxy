@@ -28,7 +28,8 @@ import (
 const port = 3307
 
 var dialClient struct {
-	// This client is initialized in Init/InitClient/InitDefault and read in Dial.
+	// This client is initialized in Init/InitWithClient/InitDefault
+	// and read in Dial.
 	c *Client
 	sync.Mutex
 }
@@ -71,7 +72,7 @@ func Init(auth *http.Client, connset *ConnSet, dialer Dialer) {
 	dialClient.Lock()
 	dialClient.c = &Client{
 		Port:   port,
-		Certs:  certs.NewCertSource("https://www.googleapis.com/sql/v1beta4/", auth, true),
+		Certs:  certs.NewCertSource("", auth, true),
 		Conns:  connset,
 		Dialer: dialer,
 	}
@@ -80,9 +81,18 @@ func Init(auth *http.Client, connset *ConnSet, dialer Dialer) {
 
 // InitClient is similar to Init, but allows you to specify the Client
 // directly.
+
+// Deprecated: Use InitWithClient instead.
 func InitClient(c Client) {
 	dialClient.Lock()
 	dialClient.c = &c
+	dialClient.Unlock()
+}
+
+// InitWithClient specifies the Client directly.
+func InitWithClient(c *Client) {
+	dialClient.Lock()
+	dialClient.c = c
 	dialClient.Unlock()
 }
 
