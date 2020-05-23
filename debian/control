@@ -3,7 +3,7 @@ Section: devel
 Priority: optional
 Maintainer: Debian Go Packaging Team <pkg-go-maintainers@lists.alioth.debian.org>
 Uploaders: Manoj Srivastava <srivasta@debian.org>
-Build-Depends: debhelper (>= 12),
+Build-Depends: debhelper-compat (= 12),
                dh-golang,
                golang-any,
                golang-bazil-fuse-dev,
