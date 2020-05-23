@@ -17,8 +17,8 @@ Build-Depends: debhelper-compat (= 12),
                golang-pq-dev
 Standards-Version: 4.3.0
 Homepage: https://github.com/GoogleCloudPlatform/cloudsql-proxy
-Vcs-Browser: https://salsa.debian.org/go-team/packages/cloudsql-proxy
-Vcs-Git: https://salsa.debian.org/go-team/packages/cloudsql-proxy.git
+VCS-Git: https://salsa.debian.org/srivasta/cloudsql-proxy.git
+VCS-Browser: https://salsa.debian.org/srivasta/cloudsql-proxy
 XS-Go-Import-Path: github.com/GoogleCloudPlatform/cloudsql-proxy
 Testsuite: autopkgtest-pkg-go
 
