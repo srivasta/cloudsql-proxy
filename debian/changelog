@@ -1,3 +1,9 @@
+cloudsql-proxy (1.17.0-3) unstable; urgency=medium
+
+  * Revert the last change
+
+ -- Manoj Srivastava <srivasta@debian.org>  Sat, 23 May 2020 01:17:14 -0700
+
 cloudsql-proxy (1.17.0-2) unstable; urgency=medium
 
   * Update the VCS-* headers, since the team vcs repo is empty, and I
